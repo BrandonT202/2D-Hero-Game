@@ -49,4 +49,9 @@ public class Sensor_HeroKnight : MonoBehaviour {
     {
         return m_collided.ToArray();
     }
+
+    public void ClearColliders()
+    {
+        m_collided.Clear();
+    }
 }

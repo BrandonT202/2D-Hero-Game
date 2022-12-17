@@ -1,5 +1,6 @@
 ﻿using UnityEngine;
 using System.Collections;
+using System;
 
 public class HeroKnight : MonoBehaviour
 {
@@ -12,12 +13,18 @@ public class HeroKnight : MonoBehaviour
 
     private Animator m_animator;
     private Rigidbody2D m_body2d;
+
+    // Attack
+    public Transform m_attackPointLeft;
+    public Transform m_attackPointRight;
+    public LayerMask enemyLayers;
+    public float m_attackRange = 1;
+
     private Sensor_HeroKnight m_groundSensor;
     private Sensor_HeroKnight m_wallSensorR1;
     private Sensor_HeroKnight m_wallSensorR2;
     private Sensor_HeroKnight m_wallSensorL1;
     private Sensor_HeroKnight m_wallSensorL2;
-    private Sensor_HeroKnight m_attackSensor;
     private bool m_isWallSliding = false;
     private bool m_grounded = false;
     private bool m_rolling = false;
@@ -30,6 +37,7 @@ public class HeroKnight : MonoBehaviour
     private float m_rollCurrentTime;
     private float m_wallJumpCooldown = 0f;
     private bool m_isWallJumping = false;
+    private int m_attackDamage = 40;
 
 
     // Use this for initialization
@@ -42,7 +50,6 @@ public class HeroKnight : MonoBehaviour
         m_wallSensorR2 = transform.Find("WallSensor_R2").GetComponent<Sensor_HeroKnight>();
         m_wallSensorL1 = transform.Find("WallSensor_L1").GetComponent<Sensor_HeroKnight>();
         m_wallSensorL2 = transform.Find("WallSensor_L2").GetComponent<Sensor_HeroKnight>();
-        m_attackSensor = transform.Find("AttackSensor").GetComponent<Sensor_HeroKnight>();
     }
 
     // Update is called once per frame
@@ -68,6 +75,7 @@ public class HeroKnight : MonoBehaviour
             m_grounded = true;
             m_isWallJumping = false;
             m_animator.SetBool("Grounded", m_grounded);
+            AudioManager.Instance.PlaySFX(SFX.LAND);
         }
 
         //Check if character just started falling
@@ -122,23 +130,7 @@ public class HeroKnight : MonoBehaviour
         //Attack
         else if (Input.GetMouseButtonDown(0) && m_timeSinceAttack > 0.25f && !m_rolling)
         {
-            m_currentAttack++;
-
-            // Loop back to one after third attack
-            if (m_currentAttack > 3)
-                m_currentAttack = 1;
-
-            // Reset Attack combo if time since last attack is too large
-            if (m_timeSinceAttack > 1.0f)
-                m_currentAttack = 1;
-
-            // Call one of three attack animations "Attack1", "Attack2", "Attack3"
-            m_animator.SetTrigger("Attack" + m_currentAttack);
-
-            // Reset timer
-            m_timeSinceAttack = 0.0f;
-
-            m_isAttacking = true;
+            Attack();
         }
 
         // Block
@@ -157,6 +149,8 @@ public class HeroKnight : MonoBehaviour
             m_rolling = true;
             m_animator.SetTrigger("Roll");
             m_body2d.velocity = new Vector2(m_facingDirection * m_rollForce, m_body2d.velocity.y);
+
+            AudioManager.Instance.PlaySFX(SFX.EVADE);
         }
 
         //Jump
@@ -171,6 +165,7 @@ public class HeroKnight : MonoBehaviour
                 m_animator.SetBool("Grounded", m_grounded);
                 m_body2d.velocity = new Vector2(m_body2d.velocity.x, m_jumpForce);
                 m_groundSensor.Disable(0.2f);
+                AudioManager.Instance.PlaySFX(SFX.JUMP);
             }
             // If the player is on the wall and not rolling or touching the ground
             else if (m_isWallSliding && !m_rolling && !m_grounded)
@@ -225,20 +220,36 @@ public class HeroKnight : MonoBehaviour
         }
     }
 
-    private void FixedUpdate()
+    private void Attack()
     {
-        if (m_attackSensor.State() && m_isAttacking)
+        m_currentAttack++;
+
+        // Loop back to one after third attack
+        if (m_currentAttack > 3)
+            m_currentAttack = 1;
+
+        // Reset Attack combo if time since last attack is too large
+        if (m_timeSinceAttack > 1.0f)
+            m_currentAttack = 1;
+
+        // Call one of three attack animations "Attack1", "Attack2", "Attack3"
+        m_animator.SetTrigger("Attack" + m_currentAttack);
+
+        // Detect Collisions
+        Transform attackPoint = m_facingDirection == 1 ? m_attackPointRight : m_attackPointLeft;
+        Collider2D[] hitEnemies = Physics2D.OverlapCircleAll(attackPoint.position, m_attackRange, enemyLayers);
+
+        foreach (var c in hitEnemies)
         {
-            var colliderList = m_attackSensor.GetAllColliders();
-            m_attackSensor.Disable(0.2f);
-
-            foreach (var c in colliderList)
-            {
-                c.GetComponent<Bandit>()?.Damage();
-            }
-
-            m_isAttacking = false;
+            c.GetComponent<Enemy>().TakeDamage(m_attackDamage);
         }
+
+        // Play audio
+        AudioManager.Instance.PlaySFX(SFX.ATTACK);
+
+        // Reset timer
+        m_timeSinceAttack = 0.0f;
+        m_isAttacking = true;
     }
 
     // Animation Events
@@ -258,6 +269,19 @@ public class HeroKnight : MonoBehaviour
             GameObject dust = Instantiate(m_slideDust, spawnPosition, gameObject.transform.localRotation) as GameObject;
             // Turn arrow in correct direction
             dust.transform.localScale = new Vector3(m_facingDirection, 1, 1);
+        }
+    }
+
+    private void OnDrawGizmosSelected()
+    {
+        if (m_attackPointLeft != null)
+        {
+            Gizmos.DrawWireSphere(m_attackPointLeft.position, m_attackRange);
+        }
+
+        if (m_attackPointRight != null)
+        {
+            Gizmos.DrawWireSphere(m_attackPointRight.position, m_attackRange);
         }
     }
 }
